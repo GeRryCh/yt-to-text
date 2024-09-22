@@ -1,0 +1,6 @@
+yt-dlp
+pydub
+openai-whisper
+openai
+tqdm
+python-dotenv
