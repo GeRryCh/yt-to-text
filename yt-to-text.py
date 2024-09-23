@@ -51,7 +51,7 @@ def transcribe_audio(audio_path, verbose=False):
         warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 
     model = whisper.load_model("base")
-    result = model.transcribe(audio_path)
+    result = model.transcribe(audio_path, verbose=False)
     
     # Extract segments with timestamps
     segments = result["segments"]
