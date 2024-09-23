@@ -6,8 +6,8 @@ import yt_dlp
 import whisper
 from openai import OpenAI
 from dotenv import load_dotenv
-
-
+import logging
+import warnings
 import re
 from tqdm import tqdm
 
@@ -27,7 +27,7 @@ def progress_hook(d):
         except Exception as e:
             print(f"Error updating progress: {str(e)}")
 
-def download_audio(url, output_path):
+def download_audio(url, output_path, verbose=False):
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -36,12 +36,20 @@ def download_audio(url, output_path):
             'preferredquality': '192',
         }],
         'outtmpl': output_path,
-        'progress_hooks': [progress_hook],
+        'progress_hooks': [progress_hook]
     }
+    if not verbose:
+        ydl_opts['quiet'] = True
+        ydl_opts['noprogress'] = True
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-def transcribe_audio(audio_path):
+def transcribe_audio(audio_path, verbose=False):
+    if not verbose:
+        logging.basicConfig(level=logging.CRITICAL)
+        warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+
     model = whisper.load_model("base")
     result = model.transcribe(audio_path)
     return result["text"]
@@ -74,6 +82,7 @@ def main():
     parser.add_argument("--url", required=True, help="YouTube video URL")
     parser.add_argument("--prompt_file", help="Path to the Markdown file containing the prompt")
     parser.add_argument("--prompt", help="Text prompt for processing")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose mode")
     args = parser.parse_args()
 
     if args.prompt_file and args.prompt:
@@ -83,33 +92,45 @@ def main():
 
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
-            print("Downloading audio...")
+            if args.verbose:
+                print("Downloading audio...")
             base_audio_path = os.path.join(temp_dir, "yt-audio")
-            download_audio(args.url, base_audio_path)
+            download_audio(args.url, base_audio_path, args.verbose)
             audio_path = base_audio_path + ".mp3"  # Append .mp3 after download
 
-            print("Transcribing audio at: ", audio_path)
+            if args.verbose:
+                print("Transcribing audio at: ", audio_path)
+
             transcription = transcribe_audio(audio_path)
 
-            print("\nTranscribed audio:")
-            print(transcription)
-            print("\n" + "-"*50 + "\n")  # Separator for better readability
+            if args.verbose:
+                print("\nTranscribed audio:")
+                print(transcription)
+                print("\n" + "-"*50 + "\n")  # Separator for better readability
+
+            if args.verbose:
+                print(transcription)
+                print("\n" + "-"*50 + "\n")  # Separator for better readability
 
             prompt = None
             if args.prompt_file:
-                print("Reading prompt from file...")
+                if args.verbose:
+                    print("Reading prompt from file...")
                 prompt = read_prompt_file(args.prompt_file)
             elif args.prompt:
                 prompt = args.prompt
 
             if prompt:
-                print("Processing text...")
+                if args.verbose:
+                    print("Processing text...")
                 result = process_text(transcription, prompt)
             else:
-                print("No prompt provided. Skipping text processing.")
+                if args.verbose:
+                    print("No prompt provided. Skipping text processing.")
                 result = transcription
 
-            print("\nResult:")
+            if args.verbose:
+                print("\nResult:")
             print(result)
 
         except Exception as e:
