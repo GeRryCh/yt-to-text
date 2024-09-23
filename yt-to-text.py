@@ -4,7 +4,7 @@ import tempfile
 from tqdm import tqdm
 import yt_dlp
 import whisper
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 
@@ -56,16 +56,18 @@ def read_prompt_file(prompt_file):
         raise IOError(f"Error reading prompt file: {prompt_file}")
 
 def process_text(text, prompt):
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    response = openai.Completion.create(
-        engine="text-davinci-002",
-        prompt=f"{prompt}\n\nTranscribed text: {text}\n\nProcessed:",
-        max_tokens=150,
-        n=1,
-        stop=None,
-        temperature=0.7,
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Default to gpt-3.5-turbo if not specified
+    
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"Transcribed text: {text}"}
+        ],
+        n=1
     )
-    return response.choices[0].text.strip()
+    return response.choices[0].message.content.strip()
 
 def main():
     parser = argparse.ArgumentParser(description="Process YouTube audio with AI")
@@ -88,6 +90,10 @@ def main():
 
             print("Transcribing audio at: ", audio_path)
             transcription = transcribe_audio(audio_path)
+
+            print("\nTranscribed audio:")
+            print(transcription)
+            print("\n" + "-"*50 + "\n")  # Separator for better readability
 
             prompt = None
             if args.prompt_file:
