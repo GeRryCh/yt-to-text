@@ -52,7 +52,43 @@ def transcribe_audio(audio_path, verbose=False):
 
     model = whisper.load_model("base")
     result = model.transcribe(audio_path)
-    return result["text"]
+    
+    # Extract segments with timestamps
+    segments = result["segments"]
+    
+    # Format the output in 30-second chunks
+    transcription = []
+    current_chunk = []
+    chunk_start = 0
+    
+    for segment in segments:
+        current_chunk.append(segment)
+        
+        if segment['end'] - chunk_start >= 30:
+            chunk_text = format_chunk(current_chunk, chunk_start)
+            transcription.append(chunk_text)
+            current_chunk = []
+            chunk_start = segment['end']
+    
+    # Add any remaining segments
+    if current_chunk:
+        chunk_text = format_chunk(current_chunk, chunk_start)
+        transcription.append(chunk_text)
+    
+    return "\n".join(transcription)
+
+def format_chunk(chunk, start_time):
+    formatted_start = format_timestamp(start_time)
+    text = " ".join(segment['text'] for segment in chunk)
+    return f"({formatted_start}){text}"
+
+def format_timestamp(seconds):
+    minutes, seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    else:
+        return f"{minutes:02d}:{seconds:02d}"
 
 def read_prompt_file(prompt_file):
     try:
@@ -67,15 +103,23 @@ def process_text(text, prompt):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Default to gpt-3.5-turbo if not specified
     
-    response = client.chat.completions.create(
+    stream = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"Transcribed text: {text}"}
         ],
-        n=1
+        stream=True  # Enable streaming
     )
-    return response.choices[0].message.content.strip()
+    
+    full_response = ""
+    for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            content = chunk.choices[0].delta.content
+            print(content, end='', flush=True)  # Print each token immediately
+            full_response += content
+    
+    print()  # Print a newline at the end
 
 def main():
     parser = argparse.ArgumentParser(description="Process YouTube audio with AI")
@@ -101,14 +145,10 @@ def main():
             if args.verbose:
                 print("Transcribing audio at: ", audio_path)
 
-            transcription = transcribe_audio(audio_path)
+            transcription = transcribe_audio(audio_path, args.verbose)
 
             if args.verbose:
                 print("\nTranscribed audio:")
-                print(transcription)
-                print("\n" + "-"*50 + "\n")  # Separator for better readability
-
-            if args.verbose:
                 print(transcription)
                 print("\n" + "-"*50 + "\n")  # Separator for better readability
 
@@ -123,15 +163,7 @@ def main():
             if prompt:
                 if args.verbose:
                     print("Processing text...")
-                result = process_text(transcription, prompt)
-            else:
-                if args.verbose:
-                    print("No prompt provided. Skipping text processing.")
-                result = transcription
-
-            if args.verbose:
-                print("\nResult:")
-            print(result)
+                process_text(transcription, prompt)
 
         except Exception as e:
             print(f"An error occurred: {str(e)}")
