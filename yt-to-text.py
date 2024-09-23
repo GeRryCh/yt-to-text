@@ -82,10 +82,11 @@ def main():
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             print("Downloading audio...")
-            audio_path = os.path.join(temp_dir, "audio.mp3")
-            download_audio(args.url, audio_path)
+            base_audio_path = os.path.join(temp_dir, "yt-audio")
+            download_audio(args.url, base_audio_path)
+            audio_path = base_audio_path + ".mp3"  # Append .mp3 after download
 
-            print("Transcribing audio...")
+            print("Transcribing audio at: ", audio_path)
             transcription = transcribe_audio(audio_path)
 
             prompt = None
